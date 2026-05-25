@@ -1,0 +1,20 @@
+{
+  "1": {
+    "name": "Ollama (локальный)",
+    "api_key": "ollama",
+    "base_url": "http://localhost:11434/v1",
+    "env_key": null
+  },
+  "2": {
+    "name": "OpenAI",
+    "api_key": null,
+    "base_url": null,
+    "env_key": "OPENAI_API_KEY"
+  },
+  "3": {
+    "name": "OpenRouter",
+    "api_key": null,
+    "base_url": "https://openrouter.ai/api/v1",
+    "env_key": "OPENROUTER_API_KEY"
+  }
+}
