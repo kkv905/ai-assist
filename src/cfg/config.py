@@ -110,11 +110,22 @@ def build_client(provider: str, model: str) -> tuple[Any, str]:
     except json.JSONDecodeError as exc:
         raise SystemExit(f"Некорректный JSON в файле провайдеров: {providers_path}") from exc
 
-    if provider not in providers:
-        available = ", ".join(providers)
-        raise SystemExit(f"Неизвестный провайдер '{provider}'. Доступно: '{available}'")
+    # Поддержка выбора провайдера как по ключу ("1", "2"), так и по имени из providers.json.
+    provider_key = provider if provider in providers else None
+    if provider_key is None:
+        for key, value in providers.items():
+            if value.get("name") == provider:
+                provider_key = key
+                break
+    if provider_key is None:
+        available_keys = ", ".join(providers.keys())
+        available_names = ", ".join(v.get("name", "<без имени>") for v in providers.values())
+        raise SystemExit(
+            f"Неизвестный провайдер '{provider}'. Доступные ключи: {available_keys}. "
+            f"Доступные имена: {available_names}."
+        )
 
-    cfg = providers[provider]
+    cfg = providers[provider_key]
     cfg["model"] = model
     env_key = cfg.get("env_key")
     api_key = get_env_required(env_key) if env_key else cfg.get("api_key")
