@@ -1,4 +1,7 @@
+import base64
+import mimetypes
 import os
+import shlex
 from collections import deque
 from pathlib import Path
 from typing import Any
@@ -69,6 +72,60 @@ def stream_response(stream: Any) -> str:
     return "".join(chunks).strip()
 
 
+def parse_analyze_command(command: str) -> tuple[str, str]:
+    """Разбирает команду /analyze и возвращает путь к файлу и вопрос."""
+    parts = shlex.split(command, posix=False)
+    if len(parts) < 2:
+        raise ValueError("Использование: /analyze <путь> [вопрос]")
+    image_path = parts[1]
+    question = " ".join(parts[2:]).strip() or "Опиши изображение."
+    return image_path, question
+
+
+def image_to_data_url(image_path: str) -> str:
+    """Читает изображение и возвращает data URL для Vision API."""
+    path = Path(image_path).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"Файл не найден: {path}")
+
+    mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def run_vision_request(
+    primary_client: Any,
+    primary_model: str,
+    fallback_client: Any | None,
+    fallback_model: str | None,
+    system_prompt: str,
+    image_path: str,
+    question: str,
+) -> str:
+    """Отправляет изображение в Vision API и возвращает текстовый ответ."""
+    data_url = image_to_data_url(image_path)
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": question},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ],
+        },
+    ]
+    stream, _model_used = call_with_fallback(
+        primary_client=primary_client,
+        primary_model=primary_model,
+        fallback_client=fallback_client,
+        fallback_model=fallback_model,
+        messages=messages,
+    )
+    return stream_response(stream)
+
+
 def main() -> None:
     setup_logging()
 
@@ -88,7 +145,7 @@ def main() -> None:
     history: deque[dict[str, str]] = deque(maxlen=10)
     dissatisfaction_streak = 0
 
-    print("CLI-помощник запущен. Команды: /clear, /stats, /quit")
+    print("CLI-помощник запущен. Команды: /clear, /stats, /quit, /analyze <путь> [вопрос]")
     while True:
         user_text = input("Вы: ").strip()
         if not user_text:
@@ -107,6 +164,24 @@ def main() -> None:
             print(f"Cache misses: {stats['misses']}")
             print(f"Cache hit rate: {stats['hit_rate']}")
             print(f"Ключей в Redis: {stats['keys']}")
+            continue
+        if user_text.startswith("/analyze"):
+            try:
+                image_path, question = parse_analyze_command(user_text)
+                print("Помощник: ", end="", flush=True)
+                answer = run_vision_request(
+                    primary_client=primary_client,
+                    primary_model=primary_model,
+                    fallback_client=fallback_client,
+                    fallback_model=fallback_model,
+                    system_prompt=system_prompt,
+                    image_path=image_path,
+                    question=question,
+                )
+                history.append({"role": "user", "content": f"[analyze] {question} ({image_path})"})
+                history.append({"role": "assistant", "content": answer})
+            except Exception as exc:
+                print(f"Ошибка мультимодального запроса: {exc}")
             continue
 
         print(f"[Класс сообщения: {classify_message(user_text)}]")
