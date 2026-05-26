@@ -8,6 +8,7 @@ from openai import OpenAI
 from redis import Redis
 
 from src.cfg.config import get_openai_api_key, get_redis_host, get_redis_port, get_redis_pwd
+from src.cfg.logging import setup_logging
 
 
 class RedisLLMCache:
@@ -98,6 +99,7 @@ def print_cache_report(cache: Any | None = None, avg_tokens: int = 500) -> None:
 
 
 def run_redis_cache(messages: list[dict[str, str]]) -> None:
+    setup_logging()
     client = build_client()
     cache = RedisLLMCache(host=get_redis_host(), port=get_redis_port(), password=get_redis_pwd(), ttl=3600)
 
